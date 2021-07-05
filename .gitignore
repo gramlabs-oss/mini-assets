@@ -1,1 +1,4 @@
-/target
+/target/
+/assets/
+
+/Manifest.yaml
