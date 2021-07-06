@@ -1,4 +1,5 @@
 /target/
 /assets/
 
+/.vscode/
 /Manifest.yaml
