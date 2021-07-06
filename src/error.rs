@@ -6,6 +6,9 @@ pub enum Error {
     #[error("the path `{0}` is not a folder")]
     NonFolder(String),
 
+    #[error("the image file `{0}` is empty")]
+    EmptyImage(String),
+
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
@@ -14,4 +17,7 @@ pub enum Error {
 
     #[error(transparent)]
     Yaml(#[from] serde_yaml::Error),
+
+    #[error(transparent)]
+    Utf8(#[from] std::string::FromUtf8Error),
 }

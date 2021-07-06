@@ -5,6 +5,7 @@ use mini_assets::{scan_categories, Category, I18nStr, Manifest};
 
 fn main() -> Result<()> {
     let manifest = &mut gen_manifest()?;
+
     let categories = scan_categories(ZhHans)?;
 
     let categories_conf = if manifest.categories.is_empty() {
@@ -28,11 +29,7 @@ fn main() -> Result<()> {
 
         for category in categories {
             if !manifest.category_exists(&category.id) {
-                categories_conf.push(Category {
-                    id: category.id.clone(),
-                    parents: vec![],
-                    name: I18nStr::new(vec![ZhHans.value(category.id.clone())]),
-                })
+                categories_conf.push(category);
             }
         }
 
@@ -41,16 +38,26 @@ fn main() -> Result<()> {
 
     manifest.categories = categories_conf;
 
-    manifest.override_include_formats()?;
-    manifest.fix_categories_parents()?;
-    manifest.override_dt_now();
-    manifest.save()?;
+    // 输出每一张图片。
+    // for category in &manifest.categories {
+    //     for image in category.scan_images()? {
+    //         image.output()?;
+    //     }
+    // }
+
+    // 重构并保存清单文件。
+    manifest
+        .override_include_formats()?
+        .override_categories()?
+        .override_dt_now()
+        .override_version()
+        .save()?;
 
     Ok(())
 }
 
 fn gen_manifest() -> Result<Manifest> {
-    if let Some(manifest) = Manifest::load_if()? {
+    if let Some(manifest) = Manifest::load()? {
         Ok(manifest)
     } else {
         Ok(Manifest::new())
