@@ -39,7 +39,7 @@ lazy_static! {
     static ref WIDTH: usize = {
         (*WIDTH_STR)
             .parse::<usize>()
-            .expect(&format!("the width value `{}` is invalid", *WIDTH_STR))
+            .unwrap_or_else(|_| panic!("the width value `{}` is invalid", *WIDTH_STR))
     };
 }
 
