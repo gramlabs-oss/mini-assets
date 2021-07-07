@@ -8,7 +8,7 @@ use mini_assets::{
 };
 use std::path::PathBuf;
 
-const DEFAULT_WIDTH: &str = "200";
+const DEFAULT_WIDTH: &str = "250";
 const DEFAULT_OUTPUT_DIR: &str = "_images";
 
 fn main() -> Result<()> {
@@ -114,7 +114,7 @@ fn build_cli() -> App<'static, 'static> {
             Arg::with_name("width")
                 .value_name("width")
                 .long("width")
-                .default_value("250")
+                .default_value(DEFAULT_WIDTH)
                 .help("The width of images"),
         )
 }
