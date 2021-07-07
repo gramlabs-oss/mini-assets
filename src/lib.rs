@@ -1,9 +1,11 @@
 use lazy_static::lazy_static;
+use magick_rust::{magick_wand_genesis, MagickWand};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Once;
 use std::{env, fs};
 
 pub mod error;
@@ -12,9 +14,10 @@ pub use error::Error;
 
 use result::Result;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-const VAR_MINI_ASSETS_PREFIX: &str = "MINI_ASSETS_PREFIX";
-const VAR_MINI_ASSETS_OUTPUT: &str = "MINI_ASSETS_OUTPUT";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VAR_MINI_ASSETS_PREFIX: &str = "MINI_ASSETS_PREFIX";
+pub const VAR_MINI_ASSETS_OUTPUT: &str = "MINI_ASSETS_OUTPUT";
+pub const VAR_MINI_ASSETS_WIDTH: &str = "MINI_ASSETS_WIDTH";
 
 const MANIFEST_FILE: &str = "Manifest.yaml";
 
@@ -22,26 +25,22 @@ const OUTPUT_MANIFEST_COMMENTS: &str = r#"# 本文件由 mini-assets-gen 生成�
 # 若要修改，请改动源 Manifest.yaml 文件以后再重写生成。
 "#;
 
-lazy_static! {
-    static ref PREFIX: String = {
-        if let Ok(prefix) = env::var(VAR_MINI_ASSETS_PREFIX) {
-            prefix
-        } else {
-            String::from(".")
-        }
-    };
-    static ref PREFIX_PATH: &'static Path = Path::new(&*PREFIX);
-    static ref OUTPUT: String = {
-        if let Ok(output) = env::var(VAR_MINI_ASSETS_OUTPUT) {
-            output
-        } else {
-            let mut path_buf = PathBuf::from(".");
-            path_buf.push(Path::new("_images"));
+static START: Once = Once::new();
 
-            path_buf.to_string_lossy().to_string()
-        }
-    };
+lazy_static! {
+    static ref PREFIX: String =
+        env::var(VAR_MINI_ASSETS_PREFIX).expect("missing variable `MINI_ASSETS_PREFIX`");
+    static ref PREFIX_PATH: &'static Path = Path::new(&*PREFIX);
+    static ref OUTPUT: String =
+        env::var(VAR_MINI_ASSETS_OUTPUT).expect("missing variable `MINI_ASSETS_OUTPUT`");
     static ref OUTPUT_PATH: &'static Path = Path::new(&*OUTPUT);
+    static ref WIDTH_STR: String =
+        env::var(VAR_MINI_ASSETS_WIDTH).expect("missing variable `MINI_ASSETS_WIDTH`");
+    static ref WIDTH: usize = {
+        (*WIDTH_STR)
+            .parse::<usize>()
+            .expect(&format!("the width value `{}` is invalid", *WIDTH_STR))
+    };
 }
 
 /// 一个本地化的值。
@@ -179,9 +178,12 @@ impl Category {
 /// 资源根目录的清单配置。
 #[derive(Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Manifest {
+    /// 版本字符串。
     version: String,
     /// 生成时间。
     pub datetime: String,
+    /// 宽度。
+    width: usize,
     /// 包含的格式列表。
     pub include_formats: Vec<String>,
     /// 每一个类别的配置。
@@ -192,6 +194,7 @@ impl Manifest {
     pub fn new() -> Self {
         Self {
             datetime: Self::datetime_now(),
+            width: *WIDTH,
             ..Default::default()
         }
     }
@@ -205,8 +208,10 @@ impl Manifest {
         }
     }
 
-    /// 将当前的对象数据序列化为 JSON 再保存至当前目录的 `manifest.json` 文件。如果此文件存在，将会覆盖原有内容。
+    /// 将当前的对象数据序列化为 YAML 再保存至当前目录的 `Manifest.yaml` 文件。如果此文件存在，将会覆盖原有内容。
     pub fn save(&mut self) -> Result<()> {
+        self.width = *WIDTH;
+
         let mut prfix_buf = PathBuf::from(*PREFIX_PATH);
         prfix_buf.push(Path::new(MANIFEST_FILE));
         let file_in_prefix_path = prfix_buf.as_path();
@@ -329,7 +334,7 @@ fn read_manifest() -> Result<Option<String>> {
 }
 
 /// 从指定路径扫描并生成类别列表。
-pub fn scan_categories(default_locale: Locale) -> Result<Vec<Category>> {
+pub fn scan_categories(default_locale: Locale, skips: Vec<&str>) -> Result<Vec<Category>> {
     if (*PREFIX_PATH).is_dir() {
         let mut categories = vec![];
 
@@ -342,7 +347,12 @@ pub fn scan_categories(default_locale: Locale) -> Result<Vec<Category>> {
             }
 
             let dir_name = if let Some(file_name) = sub_path.file_name() {
-                file_name.to_string_lossy().to_string()
+                let dir_name = file_name.to_string_lossy().to_string();
+                if skips.contains(&dir_name.as_str()) {
+                    continue;
+                }
+
+                dir_name
             } else {
                 // TODO: 输出警告日志：此目录名称不正常已略过。
                 continue;
@@ -419,15 +429,27 @@ impl<'a> Image<'a> {
         Ok(hash[0..15].to_string())
     }
 
-    // 将文件保存到输出目录，包括压制等处理过程。
-    // pub fn output(&self) -> Result<PathBuf> {
-    //     let mut output_buf = PathBuf::from(*OUTPUT_PATH);
-    //     output_buf.push(Path::new(&self.category.id));
-    //     fs::create_dir_all(&output_buf)?;
-    //     output_buf.push(Path::new(&format!("{}.{}", self.digest, self.extension)));
+    /// 将文件保存到输出目录，包括压制等处理过程。
+    pub fn output(&self) -> Result<PathBuf> {
+        START.call_once(|| {
+            magick_wand_genesis();
+        });
 
-    //     std::fs::copy(&self.file, output_buf)?;
+        let mut output_buf = PathBuf::from(*OUTPUT_PATH);
+        output_buf.push(Path::new(&self.category.id));
+        fs::create_dir_all(&output_buf)?;
+        output_buf.push(Path::new(&format!("{}.{}", self.digest, self.extension)));
 
-    //     Ok(PathBuf::new())
-    // }
+        let wand = MagickWand::new();
+        wand.read_image(&self.file.to_string_lossy())
+            .map_err(|err| Error::Message(err.to_owned()))?;
+        let ratio = (*WIDTH as f64) / (wand.get_image_width() as f64);
+        let hegiht = (wand.get_image_height() as f64 * ratio) as usize;
+
+        wand.adaptive_resize_image(*WIDTH, hegiht)?;
+        wand.write_image_blob(&self.extension)?;
+        wand.write_image(&output_buf.to_string_lossy())?;
+
+        Ok(output_buf)
+    }
 }

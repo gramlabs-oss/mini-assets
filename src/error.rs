@@ -3,6 +3,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("{0}")]
+    Message(String),
+
     #[error("the path `{0}` is not a folder")]
     NonFolder(String),
 
@@ -20,4 +23,10 @@ pub enum Error {
 
     #[error(transparent)]
     Utf8(#[from] std::string::FromUtf8Error),
+}
+
+impl From<&str> for Error {
+    fn from(message: &str) -> Self {
+        Self::Message(message.to_owned())
+    }
 }
