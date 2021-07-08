@@ -106,7 +106,7 @@ impl I18nStr {
 
 /// 单个类别和其它类别的关系。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Category {
+pub struct Album {
     /// 类别 ID。
     pub id: String,
     /// 父级类别的 ID 列表。
@@ -115,7 +115,7 @@ pub struct Category {
     pub name: I18nStr,
 }
 
-impl Category {
+impl Album {
     /// 配置中的类别目录是否还存在。
     pub fn dir_exists(&self) -> bool {
         let mut path_buf = PathBuf::from(*PREFIX_PATH);
@@ -148,7 +148,7 @@ impl Category {
     }
 }
 
-impl Category {
+impl Album {
     /// 扫描所有子文件的后缀名。
     pub fn scan_extensions(&self) -> Result<Vec<String>> {
         let mut path_buf = PathBuf::from(*PREFIX_PATH);
@@ -187,7 +187,7 @@ pub struct Manifest {
     /// 包含的格式列表。
     pub include_formats: Vec<String>,
     /// 每一个类别的配置。
-    pub categories: Vec<Category>,
+    pub albums: Vec<Album>,
 }
 
 impl Manifest {
@@ -256,8 +256,8 @@ impl Manifest {
     pub fn override_include_formats(&mut self) -> Result<&mut Self> {
         let mut extensions = vec![];
 
-        for category in &self.categories {
-            for extension in category.scan_extensions()? {
+        for album in &self.albums {
+            for extension in album.scan_extensions()? {
                 if !extensions.contains(&extension) {
                     extensions.push(extension);
                 }
@@ -270,27 +270,27 @@ impl Manifest {
     }
 
     /// 类别 ID 是否在对象中存在。
-    pub fn category_exists(&self, id: &str) -> bool {
-        self.categories
+    pub fn album_exists(&self, id: &str) -> bool {
+        self.albums
             .iter()
-            .any(|category_conf| category_conf.id == id)
+            .any(|album_conf| album_conf.id == id)
     }
 
     /// 重写类别列表，可修正一些数据错误。包括父级类别中存在错误的父级引用。
     /// ## 如果存在以下情况，父级将从父级列表中剔除：
     /// - 父级类别等于子类别自己（存在双向引用）。
     /// - 父级类别在类别列表中已不存在。
-    pub fn override_categories(&mut self) -> Result<&mut Self> {
+    pub fn override_albums(&mut self) -> Result<&mut Self> {
         // TODO: 支持修复场景：父级类别的父级引用了子类别（存在循环引用）。
 
-        let mut categories = vec![];
+        let mut albums = vec![];
 
-        for category in &self.categories {
+        for album in &self.albums {
             let mut parents = vec![];
-            for parent_id in &category.parents {
-                if let Some(_parent) = self.get_category(parent_id) {
+            for parent_id in &album.parents {
+                if let Some(_parent) = self.get_album(parent_id) {
                     // 存在父级。
-                    if &category.id != parent_id {
+                    if &album.id != parent_id {
                         // 父级不是自己。
                         parents.push(parent_id.clone());
                     }
@@ -298,20 +298,20 @@ impl Manifest {
             }
 
             // TODO: 待优化：直接从数组中删除数据，避免数据克隆开销。
-            categories.push(Category {
+            albums.push(Album {
                 parents,
-                ..category.clone()
+                ..album.clone()
             })
         }
 
-        self.categories = categories;
+        self.albums = albums;
 
         Ok(self)
     }
 
     /// 根据 ID 获取类别。
-    fn get_category(&self, id: &str) -> Option<&Category> {
-        self.categories.iter().find(|category| category.id == id)
+    fn get_album(&self, id: &str) -> Option<&Album> {
+        self.albums.iter().find(|album| album.id == id)
     }
 }
 
@@ -334,9 +334,9 @@ fn read_manifest() -> Result<Option<String>> {
 }
 
 /// 从指定路径扫描并生成类别列表。
-pub fn scan_categories(default_locale: Locale, skips: Vec<&str>) -> Result<Vec<Category>> {
+pub fn scan_albums(default_locale: Locale, skips: Vec<&str>) -> Result<Vec<Album>> {
     if (*PREFIX_PATH).is_dir() {
-        let mut categories = vec![];
+        let mut albums = vec![];
 
         for entry in fs::read_dir(*PREFIX_PATH)? {
             let entry = entry?;
@@ -358,14 +358,14 @@ pub fn scan_categories(default_locale: Locale, skips: Vec<&str>) -> Result<Vec<C
                 continue;
             };
 
-            categories.push(Category {
+            albums.push(Album {
                 id: dir_name.clone(),
                 name: I18nStr::new(vec![default_locale.value(dir_name)]),
                 parents: vec![],
             })
         }
 
-        Ok(categories)
+        Ok(albums)
     } else {
         Err(Error::NonFolder((*PREFIX).clone()))
     }
@@ -380,7 +380,7 @@ struct Dimension {
 /// 单张图片。
 #[derive(Debug, PartialEq, Eq)]
 pub struct Image<'a> {
-    category: &'a Category,
+    album: &'a Album,
     file: PathBuf,
     extension: String,
     digest: String,
@@ -388,13 +388,13 @@ pub struct Image<'a> {
 
 impl<'a> Image<'a> {
     /// 创建一张图片，如果它并非一张图片文件或计算 hash 时发送错误，将返回 `None`。
-    pub fn new(category: &'a Category, file: PathBuf) -> Option<Self> {
+    pub fn new(album: &'a Album, file: PathBuf) -> Option<Self> {
         if let Some(extension) = file.extension() {
             let extension = extension.to_string_lossy().to_string();
 
             if let Ok(digest) = Self::make_digest(&file) {
                 return Some(Self {
-                    category,
+                    album,
                     file,
                     extension,
                     digest,
@@ -436,7 +436,7 @@ impl<'a> Image<'a> {
         });
 
         let mut output_buf = PathBuf::from(*OUTPUT_PATH);
-        output_buf.push(Path::new(&self.category.id));
+        output_buf.push(Path::new(&self.album.id));
         fs::create_dir_all(&output_buf)?;
         output_buf.push(Path::new(&format!("{}.{}", self.digest, self.extension)));
 
