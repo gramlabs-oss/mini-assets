@@ -1,10 +1,14 @@
+#[cfg(feature = "image")]
+use image::GenericImageView;
 use lazy_static::lazy_static;
+#[cfg(feature = "magickwand")]
 use magick_rust::{magick_wand_genesis, MagickWand};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "magickwand")]
 use std::sync::Once;
 use std::{env, fs};
 
@@ -25,6 +29,7 @@ const OUTPUT_MANIFEST_COMMENTS: &str = r#"# 本文件由 mini-assets-gen 生成�
 # 若要修改，请改动源 Manifest.yaml 文件以后再重写生成。
 "#;
 
+#[cfg(feature = "magickwand")]
 static START: Once = Once::new();
 
 lazy_static! {
@@ -271,9 +276,7 @@ impl Manifest {
 
     /// 类别 ID 是否在对象中存在。
     pub fn album_exists(&self, id: &str) -> bool {
-        self.albums
-            .iter()
-            .any(|album_conf| album_conf.id == id)
+        self.albums.iter().any(|album_conf| album_conf.id == id)
     }
 
     /// 重写类别列表，可修正一些数据错误。包括父级类别中存在错误的父级引用。
@@ -430,6 +433,27 @@ impl<'a> Image<'a> {
     }
 
     /// 将文件保存到输出目录，包括压制等处理过程。
+    #[cfg(feature = "image")]
+    pub fn output(&self) -> Result<PathBuf> {
+        let mut output_buf = PathBuf::from(*OUTPUT_PATH);
+        output_buf.push(Path::new(&self.album.id));
+        fs::create_dir_all(&output_buf)?;
+        output_buf.push(Path::new(&format!("{}.{}", self.digest, self.extension)));
+
+        let img = image::open(&self.file)?;
+
+        let (source_width, source_height) = img.dimensions();
+
+        let ratio = (*WIDTH as f64) / (source_width as f64);
+        let hegiht = (source_height as f64 * ratio) as u32;
+
+        img.resize_exact(*WIDTH as u32, hegiht as u32, image::imageops::Lanczos3)
+            .save(&output_buf)?;
+
+        Ok(output_buf)
+    }
+
+    #[cfg(feature = "magickwand")]
     pub fn output(&self) -> Result<PathBuf> {
         START.call_once(|| {
             magick_wand_genesis();
@@ -446,7 +470,11 @@ impl<'a> Image<'a> {
         let ratio = (*WIDTH as f64) / (wand.get_image_width() as f64);
         let hegiht = (wand.get_image_height() as f64 * ratio) as usize;
 
-        wand.adaptive_resize_image(*WIDTH, hegiht)?;
+        wand.resize_image(
+            *WIDTH,
+            hegiht,
+            magick_rust::bindings::FilterType_LanczosFilter,
+        );
         wand.write_image_blob(&self.extension)?;
         wand.write_image(&output_buf.to_string_lossy())?;
 

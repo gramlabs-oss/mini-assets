@@ -23,6 +23,10 @@ pub enum Error {
 
     #[error(transparent)]
     Utf8(#[from] std::string::FromUtf8Error),
+
+    #[cfg(feature = "image")]
+    #[error(transparent)]
+    Image(#[from] image::ImageError),
 }
 
 impl From<&str> for Error {

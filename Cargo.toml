@@ -17,11 +17,17 @@ path = "src/bin/gen.rs"
 thiserror = "1.0"
 anyhow = "1.0"
 lazy_static = "1.4"
-serde = { version="1.0", features=["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 chrono = "0.4"
-magick_rust = { git="https://github.com/nlfiedler/magick-rust", branch="master" }
+magick_rust = { git = "https://github.com/nlfiedler/magick-rust", branch = "master", optional = true }
+image = { version = "0.23", optional = true }
 sha2 = "0.9"
 hex = "0.4"
 clap = "2.33"
+
+
+[features]
+default = ["image"]
+magickwand = ["magick_rust"]
