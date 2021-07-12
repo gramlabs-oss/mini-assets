@@ -281,7 +281,7 @@ cargo build --release --no-default-features --features=magickwand
 如果您是 NixOS 用户，本项目提供了 nix-shell 的配置文件。通过以下命令可直接完成构建：
 
 ```bash
-nix-shell .nix/magickwand.nix \\
+nix-shell .nix/magickwand.nix \
   --command 'cargo build --release --no-default-features --features=magickwand'
 ```
 
