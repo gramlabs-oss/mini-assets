@@ -272,16 +272,17 @@ cargo build --release
 
 本项目支持著名的图像处理软件 ImageMagick 作为图像处理后端，它可以带来更优质的算法以及更快的速度。
 
-您需要安装 magickwand 库，在 Debian 系的系统中包名一般叫 `libmagickwand-dev`。接着使用如下命令生成以 ImageMagick 作为图像处理后端的程序：
+您需要安装 magickwand 库，在 Debian 系的系统中包名一般叫 `libmagickwand-dev`。使用如下命令生成以 ImageMagick 作为图像处理后端的程序：
 
 ```bash
 cargo build --release --no-default-features --features=magickwand
 ```
 
-如果您是 NixOS 用户，本项目提供了 nix-shell 的配置文件。通过以下命令可直接构建：
+如果您是 NixOS 用户，本项目提供了 nix-shell 的配置文件。通过以下命令可直接完成构建：
 
 ```bash
-nix-shell .nix/magickwand.nix --command 'cargo build --release --no-default-features --features=magickwand'
+nix-shell .nix/magickwand.nix \\
+  --command 'cargo build --release --no-default-features --features=magickwand'
 ```
 
 ## 结束语
