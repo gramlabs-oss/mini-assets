@@ -6,6 +6,8 @@
 
 通过 [Releases](https://github.com/Hentioe/mini-assets/releases) 页面下载预编译的程序，即可直接运行。针对 Linux 发布的预编译版本使用 musl libc 交叉编译，纯静态不挑剔发行版。
 
+您也可以[编译](#从源码编译)生成程序文件，本项目理论支持 Rust 语言所支持的一切硬件架构。
+
 ## 使用
 
 当前此项目并未提供对资源的检索和下载相关的功能，这是日后可能实现的计划。也就是说图片仍然需要自己收集，提供的唯一工具 `mini-assets-gen` 程序可以辅助生成清单文件、压缩并规范化图片信息。
@@ -259,6 +261,28 @@ _如果您部署的实例的后台没有这部分内容，请更新到最新的�
 确保页面没有响应你一个错误提示（因为上传完毕后台会解析这个 zip 文件，检查结构是否正确），点击「确认更新」按钮即可完成验证资源的更新。
 
 _注意，当前 policr-mini 项目仅支持 zip 格式。请不要生成其它格式压缩包或者加密压缩。_
+
+## 从源码编译
+
+安装 Rust 工具链，使用如下命令即可完成程序构建：
+
+```bash
+cargo build --release
+```
+
+本项目支持著名的图像处理软件 ImageMagick 作为图像处理后端，它可以带来更优质的算法以及更快的速度。
+
+您需要安装 magickwand 库，在 Debian 系的系统中包名一般叫 `libmagickwand-dev`。接着使用如下命令生成以 ImageMagick 作为图像处理后端的程序：
+
+```bash
+cargo build --release --no-default-features --features=magickwand
+```
+
+如果您是 NixOS 用户，本项目提供了 nix-shell 的配置文件。通过以下命令可直接构建：
+
+```bash
+nix-shell .nix/magickwand.nix --command 'cargo build --release --no-default-features --features=magickwand'
+```
 
 ## 结束语
 
