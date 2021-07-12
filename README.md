@@ -1,6 +1,6 @@
 # mini-assets
 
-提供~~检索~~、~~下载~~、生成适用于 [policr-mini](https://github.com/Hentioe/mini-assets) 项目的图片验证资源的工具。
+提供~~检索、下载~~、生成适用于 [policr-mini](https://github.com/Hentioe/mini-assets) 项目图片验证资源的工具。
 
 ## 安装
 
