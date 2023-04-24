@@ -1,6 +1,6 @@
 with import <nixpkgs> { };
 
-stdenv.mkDerivation {
+mkShell {
   name = "features-magickwand-compile";
   buildInputs = [ pkg-config imagemagick llvmPackages_12.libclang.lib ];
 
