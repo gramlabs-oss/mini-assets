@@ -7,7 +7,7 @@ run +args='':
 install:
     cargo install --path .
 
-linting:
+lint:
     cargo clippy
 
 clean:
