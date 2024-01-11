@@ -1,4 +1,3 @@
-///!本库可能发生的独立错误。
 use thiserror::Error;
 
 #[derive(Debug, Error)]

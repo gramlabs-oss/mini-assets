@@ -230,7 +230,7 @@ impl Manifest {
         output_buf.push(Path::new(MANIFEST_FILE));
         let file_in_output_path = output_buf.as_path();
 
-        let output_yaml = format!("{}{}", &*OUTPUT_MANIFEST_COMMENTS, yaml);
+        let output_yaml = format!("{}{}", OUTPUT_MANIFEST_COMMENTS, yaml);
 
         fs::write(file_in_output_path, output_yaml)?;
 
@@ -445,9 +445,9 @@ impl<'a> Image<'a> {
         let (source_width, source_height) = img.dimensions();
 
         let ratio = (*WIDTH as f64) / (source_width as f64);
-        let hegiht = (source_height as f64 * ratio) as u32;
+        let height = (source_height as f64 * ratio) as u32;
 
-        img.resize_exact(*WIDTH as u32, hegiht as u32, image::imageops::Lanczos3)
+        img.resize_exact(*WIDTH as u32, height, image::imageops::Lanczos3)
             .save(&output_buf)?;
 
         Ok(output_buf)
