@@ -113,7 +113,7 @@ fn save_image(image: &Image, manifest: &mut Manifest) -> Option<PathBuf> {
 fn build_cli() -> App<'static, 'static> {
     App::new("mini-assets-gen")
         .version(VERSION)
-        .author("https://mini.telestd.me")
+        .author("https://mini.gramlabs.org")
         .about("Generate image verification resources suitable for Policr Mini project")
         .arg(
             Arg::with_name("prefix")
@@ -128,5 +128,12 @@ fn build_cli() -> App<'static, 'static> {
                 .long("width")
                 .default_value(DEFAULT_WIDTH)
                 .help("The width of images"),
+        )
+        .arg(
+            Arg::with_name("height")
+                .value_name("height")
+                .long("height")
+                .default_value(DEFAULT_HEIGHT)
+                .help("The height of images"),
         )
 }
