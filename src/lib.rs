@@ -14,6 +14,7 @@ use std::{env, fs};
 
 pub mod error;
 pub mod result;
+pub mod utils;
 pub use error::Error;
 
 use result::Result;
@@ -21,7 +22,6 @@ use result::Result;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const VAR_MINI_ASSETS_PREFIX: &str = "MINI_ASSETS_PREFIX";
 pub const VAR_MINI_ASSETS_OUTPUT: &str = "MINI_ASSETS_OUTPUT";
-pub const VAR_MINI_ASSETS_WIDTH: &str = "MINI_ASSETS_WIDTH";
 
 const MANIFEST_FILE: &str = "Manifest.yaml";
 
@@ -39,13 +39,6 @@ lazy_static! {
     static ref OUTPUT: String =
         env::var(VAR_MINI_ASSETS_OUTPUT).expect("missing variable `MINI_ASSETS_OUTPUT`");
     static ref OUTPUT_PATH: &'static Path = Path::new(&*OUTPUT);
-    static ref WIDTH_STR: String =
-        env::var(VAR_MINI_ASSETS_WIDTH).expect("missing variable `MINI_ASSETS_WIDTH`");
-    static ref WIDTH: usize = {
-        (*WIDTH_STR)
-            .parse::<usize>()
-            .unwrap_or_else(|_| panic!("the width value `{}` is invalid", *WIDTH_STR))
-    };
 }
 
 /// 一个本地化的值。
@@ -181,33 +174,39 @@ impl Album {
 }
 
 /// 资源根目录的清单配置。
-#[derive(Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Manifest {
     /// 版本字符串。
-    version: String,
+    pub version: String,
     /// 生成时间。
     pub datetime: String,
     /// 宽度。
-    width: usize,
+    pub width: usize,
+    // 高度
+    pub height: usize,
     /// 包含的格式列表。
     pub include_formats: Vec<String>,
     /// 每一个类别的配置。
     pub albums: Vec<Album>,
+    // 宽度比例。
+    #[serde(skip)]
+    width_scale: Option<f64>,
 }
 
 impl Manifest {
-    pub fn new() -> Self {
+    pub fn new(width: usize, height: usize) -> Self {
         Self {
             datetime: Self::datetime_now(),
-            width: *WIDTH,
+            width,
+            height,
             ..Default::default()
         }
     }
 
     /// 从当前目录加载 `manifest.json` 并创建对象，不存在将返回 `OK(None)`。返回 `Error` 表示文件内容或存在其它 IO 错误。
     pub fn load() -> Result<Option<Self>> {
-        if let Some(strdata) = read_manifest()? {
-            Ok(Some(serde_yaml::from_str::<Manifest>(&strdata)?))
+        if let Some(text) = read_manifest()? {
+            Ok(Some(serde_yaml::from_str::<Manifest>(&text)?))
         } else {
             Ok(None)
         }
@@ -215,8 +214,6 @@ impl Manifest {
 
     /// 将当前的对象数据序列化为 YAML 再保存至当前目录的 `Manifest.yaml` 文件。如果此文件存在，将会覆盖原有内容。
     pub fn save(&mut self) -> Result<()> {
-        self.width = *WIDTH;
-
         let mut prfix_buf = PathBuf::from(*PREFIX_PATH);
         prfix_buf.push(Path::new(MANIFEST_FILE));
         let file_in_prefix_path = prfix_buf.as_path();
@@ -315,6 +312,17 @@ impl Manifest {
     /// 根据 ID 获取类别。
     fn get_album(&self, id: &str) -> Option<&Album> {
         self.albums.iter().find(|album| album.id == id)
+    }
+
+    pub fn width_scale(&mut self) -> f64 {
+        if let Some(width_scale) = self.width_scale {
+            width_scale
+        } else {
+            let width_scale = self.width as f64 / self.height as f64;
+            self.width_scale.replace(width_scale);
+
+            width_scale
+        }
     }
 }
 
@@ -434,21 +442,31 @@ impl<'a> Image<'a> {
 
     /// 将文件保存到输出目录，包括压制等处理过程。
     #[cfg(feature = "image")]
-    pub fn output(&self) -> Result<PathBuf> {
+    pub fn output(&self, manifest: &mut Manifest) -> Result<PathBuf> {
+        use utils::center_dimensions;
+
         let mut output_buf = PathBuf::from(*OUTPUT_PATH);
         output_buf.push(Path::new(&self.album.id));
         fs::create_dir_all(&output_buf)?;
         output_buf.push(Path::new(&format!("{}.{}", self.digest, self.extension)));
 
-        let img = image::open(&self.file)?;
+        let mut img = image::open(&self.file)?;
+        let dimensions = img.dimensions();
 
-        let (source_width, source_height) = img.dimensions();
+        // 按照特定尺寸比例，居中切割图片。
+        let crop_area = center_dimensions(dimensions, manifest.width_scale());
 
-        let ratio = (*WIDTH as f64) / (source_width as f64);
-        let height = (source_height as f64 * ratio) as u32;
+        // println!("{}: {:?}", self.file.to_str_ext()?, crop_area);
 
-        img.resize_exact(*WIDTH as u32, height, image::imageops::Lanczos3)
-            .save(&output_buf)?;
+        img = img
+            .crop(crop_area.x, crop_area.y, crop_area.width, crop_area.height)
+            .resize_exact(
+                manifest.width as u32,
+                manifest.height as u32,
+                image::imageops::Lanczos3,
+            );
+
+        img.save(&output_buf)?;
 
         Ok(output_buf)
     }
@@ -479,5 +497,26 @@ impl<'a> Image<'a> {
         wand.write_image(&output_buf.to_string_lossy())?;
 
         Ok(output_buf)
+    }
+}
+
+pub trait PathExt {
+    fn to_str_ext(&self) -> Result<&str>;
+}
+
+impl PathExt for std::path::PathBuf {
+    fn to_str_ext(&self) -> Result<&str> {
+        self.to_str().ok_or(Error::InvalidUnicode)
+    }
+}
+
+pub trait InputExt {
+    fn parse_int_input(&self) -> Result<usize>;
+}
+
+impl InputExt for &str {
+    fn parse_int_input(&self) -> Result<usize> {
+        self.parse::<usize>()
+            .map_err(|_| Error::InvalidIntInput(self.to_string()))
     }
 }

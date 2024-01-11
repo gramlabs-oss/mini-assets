@@ -5,6 +5,9 @@ pub enum Error {
     #[error("{0}")]
     Message(String),
 
+    #[error("the input value `{0}` is not an invalid integer")]
+    InvalidIntInput(String),
+
     #[error("the path `{0}` is not a folder")]
     NonFolder(String),
 
@@ -26,6 +29,10 @@ pub enum Error {
     #[cfg(feature = "image")]
     #[error(transparent)]
     Image(#[from] image::ImageError),
+
+    // 无效的 Unicode（常见于路径转换为字符串）
+    #[error("invalid unicode")]
+    InvalidUnicode,
 }
 
 impl From<&str> for Error {

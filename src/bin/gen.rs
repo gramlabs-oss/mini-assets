@@ -1,32 +1,41 @@
 use anyhow::{Context, Result};
 use clap::{App, Arg};
 
-use mini_assets::Locale::ZhHans;
 use mini_assets::{
-    scan_albums, Album, I18nStr, Image, Manifest, VAR_MINI_ASSETS_OUTPUT, VAR_MINI_ASSETS_PREFIX,
-    VAR_MINI_ASSETS_WIDTH, VERSION,
+    scan_albums, Album, I18nStr, Image, InputExt, Locale::ZhHans, Manifest, PathExt,
+    VAR_MINI_ASSETS_OUTPUT, VAR_MINI_ASSETS_PREFIX, VERSION,
 };
 use std::path::PathBuf;
 
 const DEFAULT_PREFIX: &str = ".";
-const DEFAULT_WIDTH: &str = "250";
+const DEFAULT_WIDTH: &str = "240";
+const DEFAULT_HEIGHT: &str = "160";
 const DEFAULT_OUTPUT_DIR: &str = "_albums";
 
 fn main() -> Result<()> {
     let matches = build_cli().get_matches();
 
+    // 从命令行读取参数。
     let prefix = matches.value_of("prefix").unwrap_or(DEFAULT_PREFIX);
-    let width = matches.value_of("width").unwrap_or(DEFAULT_WIDTH);
+    let width = matches
+        .value_of("width")
+        .unwrap_or(DEFAULT_WIDTH)
+        .parse_int_input()?;
+    let height = matches
+        .value_of("height")
+        .unwrap_or(DEFAULT_HEIGHT)
+        .parse_int_input()?;
 
-    let mut outout_path_buf = PathBuf::from(prefix);
-    outout_path_buf.push(DEFAULT_OUTPUT_DIR);
-    let output = &outout_path_buf.to_string_lossy().to_string();
+    // 初始化输出目录路径。
+    let mut outout_path = PathBuf::from(prefix);
+    outout_path.push(DEFAULT_OUTPUT_DIR);
+    let output = outout_path.to_str_ext()?;
 
+    // 使用环境变量全局保存。
     std::env::set_var(VAR_MINI_ASSETS_PREFIX, prefix);
-    std::env::set_var(VAR_MINI_ASSETS_WIDTH, width);
     std::env::set_var(VAR_MINI_ASSETS_OUTPUT, output);
 
-    let manifest = &mut gen_manifest().context("Invalid manifest file content")?;
+    let manifest = &mut gen_manifest(width, height).context("invalid manifest file content")?;
 
     let albums = scan_albums(ZhHans, vec![DEFAULT_OUTPUT_DIR])?;
 
@@ -58,12 +67,14 @@ fn main() -> Result<()> {
         albums_conf
     };
 
-    manifest.albums = albums_conf;
+    manifest.albums = albums_conf.clone();
+
+    // println!("manifest: {:?}", manifest);
 
     // 输出每一张图片。
-    for album in &manifest.albums {
+    for album in albums_conf {
         for image in album.scan_images()? {
-            if let Some(output) = save_image(&image) {
+            if let Some(output) = save_image(&image, manifest) {
                 println!("Save to {}", output.to_string_lossy());
             }
         }
@@ -80,16 +91,16 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn gen_manifest() -> Result<Manifest> {
+fn gen_manifest(width: usize, height: usize) -> Result<Manifest> {
     if let Some(manifest) = Manifest::load()? {
         Ok(manifest)
     } else {
-        Ok(Manifest::new())
+        Ok(Manifest::new(width, height))
     }
 }
 
-fn save_image(image: &Image) -> Option<PathBuf> {
-    match image.output() {
+fn save_image(image: &Image, manifest: &mut Manifest) -> Option<PathBuf> {
+    match image.output(manifest) {
         Err(_e) => {
             // 此图片输出出错，输出错误日志。
 
