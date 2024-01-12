@@ -401,7 +401,7 @@ impl<'a> Image<'a> {
     pub fn new(album: &'a Album, file: PathBuf) -> Result<Self> {
         let extension = file
             .extension()
-            .ok_or(Error::MissingExtension)?
+            .ok_or( Error::MissingExtension(file.to_str_ext()?.to_owned()))?
             .to_str()
             .ok_or(Error::InvalidUnicode)?
             .to_owned();

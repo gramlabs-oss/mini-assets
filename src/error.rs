@@ -27,8 +27,8 @@ pub enum Error {
     Utf8(#[from] std::string::FromUtf8Error),
 
     // 缺失扩展名
-    #[error("missing extension name")]
-    MissingExtension,
+    #[error("the file `{0}` missing extension name")]
+    MissingExtension(String),
 
     #[cfg(feature = "image")]
     #[error(transparent)]
