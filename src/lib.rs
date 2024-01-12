@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Once;
 use std::{env, fs};
 
+use crate::utils::center_dimensions;
+
 pub mod error;
 pub mod result;
 pub mod utils;
@@ -137,9 +139,7 @@ impl Album {
                 continue;
             }
 
-            if let Some(image) = Image::new(self, sub_path.clone()) {
-                images.push(image);
-            }
+            images.push(Image::new(self, sub_path.clone())?);
         }
 
         Ok(images)
@@ -163,7 +163,7 @@ impl Album {
             }
 
             if let Some(extention) = sub_path.extension() {
-                let extension = extention.to_string_lossy().to_string();
+                let extension = extention.to_str().ok_or(Error::InvalidUnicode)?.to_owned();
 
                 extensions.push(extension);
             }
@@ -358,8 +358,8 @@ pub fn scan_albums(default_locale: Locale, skips: Vec<&str>) -> Result<Vec<Album
             }
 
             let dir_name = if let Some(file_name) = sub_path.file_name() {
-                let dir_name = file_name.to_string_lossy().to_string();
-                if skips.contains(&dir_name.as_str()) {
+                let dir_name = file_name.to_str().ok_or(Error::InvalidUnicode)?;
+                if skips.contains(&dir_name) {
                     continue;
                 }
 
@@ -370,7 +370,7 @@ pub fn scan_albums(default_locale: Locale, skips: Vec<&str>) -> Result<Vec<Album
             };
 
             albums.push(Album {
-                id: dir_name.clone(),
+                id: dir_name.to_owned(),
                 name: I18nStr::new(vec![default_locale.value(dir_name)]),
                 parents: vec![],
             })
@@ -398,22 +398,22 @@ pub struct Image<'a> {
 }
 
 impl<'a> Image<'a> {
-    /// 创建一张图片，如果它并非一张图片文件或计算 hash 时发送错误，将返回 `None`。
-    pub fn new(album: &'a Album, file: PathBuf) -> Option<Self> {
-        if let Some(extension) = file.extension() {
-            let extension = extension.to_string_lossy().to_string();
+    pub fn new(album: &'a Album, file: PathBuf) -> Result<Self> {
+        let extension = file
+            .extension()
+            .ok_or(Error::MissingExtension)?
+            .to_str()
+            .ok_or(Error::InvalidUnicode)?
+            .to_owned();
 
-            if let Ok(digest) = Self::make_digest(&file) {
-                return Some(Self {
-                    album,
-                    file,
-                    extension,
-                    digest,
-                });
-            }
-        }
+        let digest = Self::make_digest(&file)?;
 
-        None
+        Ok(Self {
+            album,
+            file,
+            extension,
+            digest,
+        })
     }
 
     /// 生成文件摘要。
@@ -426,7 +426,9 @@ impl<'a> Image<'a> {
             let r = reader.read_to_end(&mut buf)?;
 
             if r == 0 {
-                return Err(Error::EmptyImage(file.to_string_lossy().to_string()));
+                return Err(Error::EmptyImage(
+                    file.to_str().ok_or(Error::InvalidUnicode)?.to_owned(),
+                ));
             }
         }
 
@@ -443,8 +445,6 @@ impl<'a> Image<'a> {
     /// 将文件保存到输出目录，包括压制等处理过程。
     #[cfg(feature = "image")]
     pub fn output(&self, manifest: &mut Manifest) -> Result<PathBuf> {
-        use utils::center_dimensions;
-
         let mut output_buf = PathBuf::from(*OUTPUT_PATH);
         output_buf.push(Path::new(&self.album.id));
         fs::create_dir_all(&output_buf)?;
@@ -453,11 +453,12 @@ impl<'a> Image<'a> {
         let mut img = image::open(&self.file)?;
         let dimensions = img.dimensions();
 
-        // 按照特定尺寸比例，居中切割图片。
         let crop_area = center_dimensions(dimensions, manifest.width_scale());
 
         // println!("{}: {:?}", self.file.to_str_ext()?, crop_area);
 
+        // 按照特定尺寸比例，居中切割图片。
+        // 按照指定尺寸缩放图片。
         img = img
             .crop(crop_area.x, crop_area.y, crop_area.width, crop_area.height)
             .resize_exact(
@@ -472,7 +473,7 @@ impl<'a> Image<'a> {
     }
 
     #[cfg(feature = "magickwand")]
-    pub fn output(&self) -> Result<PathBuf> {
+    pub fn output(&self, manifest: &mut Manifest) -> Result<PathBuf> {
         START.call_once(|| {
             magick_wand_genesis();
         });
@@ -483,18 +484,28 @@ impl<'a> Image<'a> {
         output_buf.push(Path::new(&format!("{}.{}", self.digest, self.extension)));
 
         let wand = MagickWand::new();
-        wand.read_image(&self.file.to_string_lossy())
-            .map_err(|err| Error::Message(err.to_owned()))?;
-        let ratio = (*WIDTH as f64) / (wand.get_image_width() as f64);
-        let hegiht = (wand.get_image_height() as f64 * ratio) as usize;
+        wand.read_image(self.file.to_str_ext()?)?;
 
+        let width = wand.get_image_width();
+        let height = wand.get_image_height();
+
+        // 按照特定尺寸比例，居中切割图片。
+        let crop_area = center_dimensions((width as u32, height as u32), manifest.width_scale());
+        wand.crop_image(
+            crop_area.width as usize,
+            crop_area.height as usize,
+            crop_area.x as isize,
+            crop_area.y as isize,
+        )?;
+
+        // 按照指定尺寸缩放图片。
         wand.resize_image(
-            *WIDTH,
-            hegiht,
+            manifest.width,
+            manifest.height,
             magick_rust::bindings::FilterType_LanczosFilter,
         );
-        wand.write_image_blob(&self.extension)?;
-        wand.write_image(&output_buf.to_string_lossy())?;
+        wand.write_image_blob(self.extension.as_str())?;
+        wand.write_image(output_buf.to_str_ext()?)?;
 
         Ok(output_buf)
     }

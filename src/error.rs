@@ -26,9 +26,17 @@ pub enum Error {
     #[error(transparent)]
     Utf8(#[from] std::string::FromUtf8Error),
 
+    // 缺失扩展名
+    #[error("missing extension name")]
+    MissingExtension,
+
     #[cfg(feature = "image")]
     #[error(transparent)]
     Image(#[from] image::ImageError),
+
+    #[cfg(feature = "magickwand")]
+    #[error(transparent)]
+    MagickError(#[from] magick_rust::MagickError),
 
     // 无效的 Unicode（常见于路径转换为字符串）
     #[error("invalid unicode")]
