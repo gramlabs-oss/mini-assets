@@ -1,6 +1,5 @@
 #[cfg(feature = "image")]
 use image::GenericImageView;
-use lazy_static::lazy_static;
 #[cfg(feature = "magickwand")]
 use magick_rust::{magick_wand_genesis, MagickWand};
 use serde::{Deserialize, Serialize};
@@ -8,6 +7,7 @@ use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 #[cfg(feature = "magickwand")]
 use std::sync::Once;
 use std::{env, fs};
@@ -34,14 +34,13 @@ const OUTPUT_MANIFEST_COMMENTS: &str = r#"# 本文件由 mini-assets-gen 生成�
 #[cfg(feature = "magickwand")]
 static START: Once = Once::new();
 
-lazy_static! {
-    static ref PREFIX: String =
-        env::var(VAR_MINI_ASSETS_PREFIX).expect("missing variable `MINI_ASSETS_PREFIX`");
-    static ref PREFIX_PATH: &'static Path = Path::new(&*PREFIX);
-    static ref OUTPUT: String =
-        env::var(VAR_MINI_ASSETS_OUTPUT).expect("missing variable `MINI_ASSETS_OUTPUT`");
-    static ref OUTPUT_PATH: &'static Path = Path::new(&*OUTPUT);
-}
+static PREFIX: LazyLock<String> = LazyLock::new(|| {
+    env::var(VAR_MINI_ASSETS_PREFIX).expect("missing variable `MINI_ASSETS_PREFIX`")
+});
+
+static OUTPUT: LazyLock<String> = LazyLock::new(|| {
+    env::var(VAR_MINI_ASSETS_OUTPUT).expect("missing variable `MINI_ASSETS_OUTPUT`")
+});
 
 /// 一个本地化的值。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,7 +117,7 @@ pub struct Album {
 impl Album {
     /// 配置中的类别目录是否还存在。
     pub fn dir_exists(&self) -> bool {
-        let mut path_buf = PathBuf::from(*PREFIX_PATH);
+        let mut path_buf = PathBuf::from(&*PREFIX);
         path_buf.push(Path::new(&self.id));
 
         path_buf.exists()
@@ -126,7 +125,7 @@ impl Album {
 
     /// 扫描此类别下的所有图片。
     pub fn scan_images(&self) -> Result<Vec<Image>> {
-        let mut path_buf = PathBuf::from(*PREFIX_PATH);
+        let mut path_buf = PathBuf::from(&*PREFIX);
         path_buf.push(Path::new(&self.id));
 
         let mut images = vec![];
@@ -149,7 +148,7 @@ impl Album {
 impl Album {
     /// 扫描所有子文件的后缀名。
     pub fn scan_extensions(&self) -> Result<Vec<String>> {
-        let mut path_buf = PathBuf::from(*PREFIX_PATH);
+        let mut path_buf = PathBuf::from(&*PREFIX);
         path_buf.push(Path::new(&self.id));
 
         let mut extensions = vec![];
@@ -214,14 +213,14 @@ impl Manifest {
 
     /// 将当前的对象数据序列化为 YAML 再保存至当前目录的 `Manifest.yaml` 文件。如果此文件存在，将会覆盖原有内容。
     pub fn save(&mut self) -> Result<()> {
-        let mut prfix_buf = PathBuf::from(*PREFIX_PATH);
+        let mut prfix_buf = PathBuf::from(&*PREFIX);
         prfix_buf.push(Path::new(MANIFEST_FILE));
         let file_in_prefix_path = prfix_buf.as_path();
 
         let yaml = &serde_yaml::to_string(self)?;
         fs::write(file_in_prefix_path, yaml)?;
 
-        let mut output_buf = PathBuf::from(*OUTPUT_PATH);
+        let mut output_buf = PathBuf::from(&*OUTPUT);
         fs::create_dir_all(&output_buf)?;
 
         output_buf.push(Path::new(MANIFEST_FILE));
@@ -328,7 +327,7 @@ impl Manifest {
 
 /// 从当前目录读取 `manifest.json` 文件内容，不存在将返回 `OK(None)`。返回 `Error` 表示出现了其它 IO 错误。
 fn read_manifest() -> Result<Option<String>> {
-    let mut path_buf = PathBuf::from(*PREFIX_PATH);
+    let mut path_buf = PathBuf::from(&*PREFIX);
     path_buf.push(Path::new(MANIFEST_FILE));
     let path = path_buf.as_path();
 
@@ -346,10 +345,10 @@ fn read_manifest() -> Result<Option<String>> {
 
 /// 从指定路径扫描并生成类别列表。
 pub fn scan_albums(default_locale: Locale, skips: Vec<&str>) -> Result<Vec<Album>> {
-    if (*PREFIX_PATH).is_dir() {
+    if (Path::new(&*PREFIX)).is_dir() {
         let mut albums = vec![];
 
-        for entry in fs::read_dir(*PREFIX_PATH)? {
+        for entry in fs::read_dir(&*PREFIX)? {
             let entry = entry?;
             let sub_path = entry.path();
 
@@ -382,12 +381,6 @@ pub fn scan_albums(default_locale: Locale, skips: Vec<&str>) -> Result<Vec<Album
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct Dimension {
-    pub width: Option<u32>,
-    pub height: Option<u32>,
-}
-
 /// 单张图片。
 #[derive(Debug, PartialEq, Eq)]
 pub struct Image<'a> {
@@ -401,7 +394,7 @@ impl<'a> Image<'a> {
     pub fn new(album: &'a Album, file: PathBuf) -> Result<Self> {
         let extension = file
             .extension()
-            .ok_or( Error::MissingExtension(file.to_str_ext()?.to_owned()))?
+            .ok_or(Error::MissingExtension(file.to_str_ext()?.to_owned()))?
             .to_str()
             .ok_or(Error::InvalidUnicode)?
             .to_owned();
@@ -445,7 +438,7 @@ impl<'a> Image<'a> {
     /// 将文件保存到输出目录，包括压制等处理过程。
     #[cfg(feature = "image")]
     pub fn output(&self, manifest: &mut Manifest) -> Result<PathBuf> {
-        let mut output_buf = PathBuf::from(*OUTPUT_PATH);
+        let mut output_buf = PathBuf::from(&*OUTPUT);
         output_buf.push(Path::new(&self.album.id));
         fs::create_dir_all(&output_buf)?;
         output_buf.push(Path::new(&format!("{}.{}", self.digest, self.extension)));

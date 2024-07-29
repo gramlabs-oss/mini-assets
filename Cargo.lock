@@ -554,7 +554,6 @@ dependencies = [
  "clap",
  "hex",
  "image",
- "lazy_static",
  "magick_rust",
  "serde",
  "serde_json",
